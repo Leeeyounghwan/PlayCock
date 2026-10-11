@@ -4,6 +4,53 @@ PlayCock은 배드민턴 모임 운영을 위한 경기 관리 웹 애플리케�
 
 현재 프로젝트는 로컬 개발 환경에서 동작하는 단계이며, 추후 AWS Lightsail 등 실제 운영 환경 배포를 고려해 프론트엔드와 백엔드를 분리해 구성했습니다.
 
+
+## 서비스 흐름
+
+```mermaid
+flowchart LR
+    A[신규 운동 일정 생성] --> B[초대코드 생성]
+    B --> C[참가자 사전 등록]
+    C --> D[Live Dashboard 운영]
+    D --> E[대기열 및 상태 관리]
+    D --> F[대기 매치 생성]
+    F --> G[코트 배정 및 경기 시작]
+    G --> H[경기 종료 및 기록 저장]
+    H --> I[운동 이력 조회]
+    I --> J[월간 통계 및 운영 관리]
+```
+
+## 시스템 구성
+
+```mermaid
+flowchart TB
+    subgraph Frontend[Frontend - React + Vite]
+        L[Live Dashboard]
+        S[세션 관리]
+        H[운동 이력]
+        A[월간 통계]
+        F[운영비 관리]
+    end
+
+    subgraph Backend[Backend - Spring Boot]
+        API[REST API]
+        Domain[Session / Participant / Match / Court / Invite]
+        History[History API]
+    end
+
+    subgraph Database[Local Database]
+        H2[(H2 file DB)]
+        Flyway[Flyway Migration]
+    end
+
+    Frontend --> API
+    API --> Domain
+    API --> History
+    Domain --> H2
+    History --> H2
+    Flyway --> H2
+```
+
 ## 주요 기능
 
 ### Live Dashboard
