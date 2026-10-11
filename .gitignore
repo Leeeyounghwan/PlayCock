@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.gradle/
+*.log
+.env
+.idea/
+.vscode/
+backend/.local-data/
+.DS_Store
+.pnpm-store/
+INSPINIA_React/
