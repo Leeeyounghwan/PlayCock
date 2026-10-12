@@ -2030,6 +2030,15 @@ body::-webkit-scrollbar,
     padding: 14px;
   }
 
+  .pc-modal.create {
+    width: 100%;
+    height: calc(100vh - 20px);
+    height: calc(100dvh - 20px);
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+    overflow: auto;
+  }
+
   .pc-modal.compact {
     height: auto;
     max-height: calc(100vh - 20px);
@@ -2088,6 +2097,10 @@ body::-webkit-scrollbar,
   .pc-participant-grid,
   .pc-status-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pc-modal.create .pc-waiting-grid {
+    max-height: min(220px, 32vh);
   }
 
   .pc-queue-card .pc-participant-grid {
