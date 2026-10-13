@@ -1,6 +1,7 @@
 import AppCard from '@/components/common/AppCard'
 import CourtCard from '@/components/playcock/CourtCard'
 import { useEffect, useState } from 'react'
+import { fetchSessions } from '../admin/sessionApi'
 import {
   cancelWaitingMatch as cancelWaitingMatchRequest,
   createCourt,
@@ -13,7 +14,6 @@ import {
   updateCourt,
   updateLiveParticipant,
 } from './liveApi'
-import { createInitialLiveSnapshot } from './liveMock'
 import type { LiveCourt, LiveMatch, LiveSnapshot, LiveStatusGroups, StatusGroupName } from './liveTypes'
 import { recommendMatch, teamScore, type QueueParticipant } from './matching'
 
@@ -34,6 +34,20 @@ const label = (player: QueueParticipant) => `${player.name} ${player.grade}`
 const compactMatch = (players: QueueParticipant[]) => `${label(players[0])} · ${label(players[1])} vs ${label(players[2])} · ${label(players[3])}`
 const statusClass: Record<string, string> = { 휴식: 'rest', 레슨: 'lesson', 미입장: 'not-arrived', 불참: 'absent' }
 const statusGroupNames: StatusGroupName[] = ['휴식', '레슨', '미입장', '불참']
+const emptyStatusGroups = (): LiveStatusGroups => ({ 휴식: [], 레슨: [], 미입장: [], 불참: [] })
+const createIdleLiveSnapshot = (): LiveSnapshot => ({
+  session: {
+    id: 0,
+    name: '',
+    date: '',
+    title: 'PlayCock · Live Board',
+    status: 'PLANNED',
+  },
+  queue: [],
+  courts: [],
+  waitingMatches: [],
+  statusGroups: emptyStatusGroups(),
+})
 const participantOptions = {
   grade: ['A', 'B', 'C', 'D', '초심', '왕초심', '입문'],
   ageBand: ['20대', '30대', '40대', '50대'],
@@ -95,7 +109,8 @@ const courtDraftKey = (court: CourtDraft) => court.isNew ? `new-${court.id}` : `
 
 export default function AdminShellPage() {
   const [now, setNow] = useState(() => Date.now())
-  const [liveSnapshot, setLiveSnapshot] = useState<LiveSnapshot>(() => createInitialLiveSnapshot())
+  const [liveSnapshot, setLiveSnapshot] = useState<LiveSnapshot>(() => createIdleLiveSnapshot())
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null)
   const [queue, setQueue] = useState<QueueParticipant[]>(() => sortByLongestWait(liveSnapshot.queue))
   const [courts, setCourts] = useState<LiveCourt[]>(() => liveSnapshot.courts)
   const [waitingMatches, setWaitingMatches] = useState<LiveMatch[]>(() => liveSnapshot.waitingMatches)
@@ -108,12 +123,13 @@ export default function AdminShellPage() {
   const [modalMode, setModalMode] = useState<ModalMode>('create')
   const [activeMatchId, setActiveMatchId] = useState<number | null>(null)
   const [activeCourt, setActiveCourt] = useState<string | null>(null)
-  const [selectedCourtName, setSelectedCourtName] = useState(liveSnapshot.courts[0].name)
+  const [selectedCourtName, setSelectedCourtName] = useState(liveSnapshot.courts[0]?.name ?? '')
   const [courtManageOpen, setCourtManageOpen] = useState(false)
   const [courtDrafts, setCourtDrafts] = useState<CourtDraft[]>([])
   const [matchPlayers, setMatchPlayers] = useState<Array<QueueParticipant | null>>(emptyMatch)
-  const [message, setMessage] = useState('대기열이 준비되었습니다.')
-  const sessionId = liveSnapshot.session.id
+  const [message, setMessage] = useState('진행중인 세션을 찾는 중입니다.')
+  const sessionId = activeSessionId ?? 0
+  const hasOpenSession = activeSessionId !== null
 
   const filledPlayers = matchPlayers.filter((player): player is QueueParticipant => Boolean(player))
   const balanceDiff = Math.abs(teamScore(matchPlayers.slice(0, 2).filter((player): player is QueueParticipant => Boolean(player))) - teamScore(matchPlayers.slice(2, 4).filter((player): player is QueueParticipant => Boolean(player))))
@@ -154,6 +170,21 @@ export default function AdminShellPage() {
     })
     if (nextMessage) setMessage(nextMessage)
   }
+  const applyNoOpenSession = () => {
+    const snapshot = createIdleLiveSnapshot()
+    setLiveSnapshot(snapshot)
+    setQueue([])
+    setCourts([])
+    setWaitingMatches([])
+    setStatusGroups(emptyStatusGroups())
+    setSelectedCourtName('')
+    setMessage('진행중인 세션이 없습니다. 세션 관리에서 세션을 열어주세요.')
+  }
+  const ensureOpenSession = () => {
+    if (hasOpenSession) return true
+    setMessage('진행중인 세션이 없습니다. 세션 관리에서 세션을 열어주세요.')
+    return false
+  }
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
@@ -161,6 +192,30 @@ export default function AdminShellPage() {
   }, [])
 
   useEffect(() => {
+    let ignore = false
+
+    fetchSessions()
+      .then((sessions) => {
+        if (ignore) return
+        const openSession = sessions.find((session) => session.status === 'OPEN')
+        if (!openSession) {
+          setActiveSessionId(null)
+          applyNoOpenSession()
+          return
+        }
+        setActiveSessionId(openSession.id)
+      })
+      .catch(() => {
+        if (!ignore) setMessage('진행중인 세션을 찾지 못했습니다. 서버 상태를 확인해주세요.')
+      })
+
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!hasOpenSession) return
     let ignore = false
 
     fetchLiveSnapshot(sessionId)
@@ -175,9 +230,10 @@ export default function AdminShellPage() {
     return () => {
       ignore = true
     }
-  }, [sessionId])
+  }, [hasOpenSession, sessionId])
 
   const refreshQueueBoard = () => {
+    if (!ensureOpenSession()) return
     fetchQueueBoard(sessionId)
       .then((board) => {
         setQueue((currentQueue) => syncQueueBoard(board.queue, currentQueue, courts, waitingMatches))
@@ -188,6 +244,7 @@ export default function AdminShellPage() {
   }
 
   const openCreateMatch = (courtName = courts[0]?.name ?? '') => {
+    if (!ensureOpenSession()) return
     setModalMode('create')
     setActiveMatchId(null)
     setActiveCourt(null)
@@ -215,6 +272,7 @@ export default function AdminShellPage() {
   }
 
   const createWaitingMatch = () => {
+    if (!ensureOpenSession()) return
     if (filledPlayers.length < 4) return setSelected('4명을 모두 선택해야 대기 매치를 생성할 수 있습니다.')
     createWaitingMatchRequest(sessionId, filledPlayers.map((player) => player.id))
       .then(() => fetchLiveSnapshot(sessionId))
@@ -279,6 +337,7 @@ export default function AdminShellPage() {
   }
 
   const openCourtManagement = () => {
+    if (!ensureOpenSession()) return
     setCourtDrafts(courts.map((court) => ({ ...court })))
     setCourtManageOpen(true)
   }
@@ -310,6 +369,7 @@ export default function AdminShellPage() {
   }
 
   const saveCourtDrafts = () => {
+    if (!ensureOpenSession()) return
     const names = courtDrafts.map((court) => court.name.trim())
     if (names.some((name) => !name)) return setSelected('코트 이름을 입력해주세요.')
     if (new Set(names).size !== names.length) return setSelected('코트 이름은 중복될 수 없습니다.')
@@ -398,7 +458,7 @@ export default function AdminShellPage() {
           <p>{message}</p>
         </div>
         <div className="pc-actions">
-          <button type="button" className="pc-secondary-button" onClick={refreshQueueBoard}>새로고침</button>
+          <button type="button" className="pc-secondary-button" onClick={refreshQueueBoard} disabled={!hasOpenSession}>새로고침</button>
         </div>
       </div>
 
@@ -406,7 +466,7 @@ export default function AdminShellPage() {
         <AppCard className="pc-courts-card">
           <div className="pc-section-title-row">
             <h2>진행 중 코트</h2>
-            <button type="button" className="pc-secondary-button" onClick={openCourtManagement}>코트 관리</button>
+            <button type="button" className="pc-secondary-button" onClick={openCourtManagement} disabled={!hasOpenSession}>코트 관리</button>
           </div>
           <div className="pc-court-grid">
             {courts.map((court) => {
@@ -430,7 +490,7 @@ export default function AdminShellPage() {
         <AppCard className="pc-queue-card">
           <div className="pc-section-title-row">
             <h2>대기열 · {queue.length}명</h2>
-            <button type="button" className="pc-primary-button" onClick={() => openCreateMatch()}>매치 생성</button>
+            <button type="button" className="pc-primary-button" onClick={() => openCreateMatch()} disabled={!hasOpenSession}>매치 생성</button>
           </div>
           <div className="pc-participant-grid">
             {queue.map((player) => (

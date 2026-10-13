@@ -8,10 +8,13 @@ import com.playcock.match.MatchStatus;
 import com.playcock.match.PlayMatch;
 import com.playcock.participant.SessionParticipant;
 import com.playcock.participant.SessionParticipantRepository;
+import com.playcock.participant.ParticipantStatus;
 import com.playcock.session.PlaySession;
 import com.playcock.session.SessionService;
+import com.playcock.session.SessionStatus;
 import java.time.Duration;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -40,6 +43,7 @@ public class HistoryService {
     @Transactional(readOnly = true)
     public List<HistoryDtos.SessionHistorySummary> sessions() {
         return sessionService.findAll().stream()
+                .filter(session -> session.getStatus() == SessionStatus.CLOSED)
                 .map(this::sessionSummary)
                 .toList();
     }
@@ -52,13 +56,15 @@ public class HistoryService {
         List<SessionParticipant> participants = participantRepository.findAllBySessionIdOrderByIdAsc(sessionId);
 
         return new HistoryDtos.SessionHistoryDetail(
-                sessionSummary(session),
+                sessionSummary(session, participants),
+                sessionStats(participants, matches.size()),
                 matches.stream().map(match -> matchRow(match, playersByMatchId.getOrDefault(match.getId(), List.of()))).toList(),
                 participants.stream()
                         .map(this::memberSummary)
                         .sorted(Comparator.comparingInt(HistoryDtos.MemberHistorySummary::games).reversed()
                                 .thenComparing(HistoryDtos.MemberHistorySummary::name))
-                        .toList()
+                        .toList(),
+                courtHistories(matches, playersByMatchId)
         );
     }
 
@@ -70,12 +76,34 @@ public class HistoryService {
     }
 
     private HistoryDtos.SessionHistorySummary sessionSummary(PlaySession session) {
+        return sessionSummary(session, participantRepository.findAllBySessionIdOrderByIdAsc(session.getId()));
+    }
+
+    private HistoryDtos.SessionHistorySummary sessionSummary(PlaySession session, List<SessionParticipant> participants) {
         return new HistoryDtos.SessionHistorySummary(
                 session.getId(),
                 session.getSessionDate(),
                 session.getName(),
                 session.getStatus(),
-                matchRepository.countBySessionIdAndStatus(session.getId(), MatchStatus.FINISHED)
+                matchRepository.countBySessionIdAndStatus(session.getId(), MatchStatus.FINISHED),
+                participants.size(),
+                participants.stream().filter(participant -> participant.getStatus() == ParticipantStatus.ABSENT).count(),
+                participants.stream().filter(participant -> participant.getStatus() == ParticipantStatus.NOT_ARRIVED).count()
+        );
+    }
+
+    private HistoryDtos.SessionHistoryStats sessionStats(List<SessionParticipant> participants, long matchCount) {
+        return new HistoryDtos.SessionHistoryStats(
+                participants.size(),
+                participants.stream().filter(participant -> participant.getGameCount() > 0).count(),
+                matchCount,
+                participants.stream().filter(participant -> participant.getStatus() == ParticipantStatus.ABSENT).count(),
+                participants.stream().filter(participant -> participant.getStatus() == ParticipantStatus.NOT_ARRIVED).count(),
+                participants.stream()
+                        .filter(participant -> participant.getStatus() != ParticipantStatus.ABSENT)
+                        .filter(participant -> participant.getStatus() != ParticipantStatus.NOT_ARRIVED)
+                        .filter(participant -> participant.getGameCount() == 0)
+                        .count()
         );
     }
 
@@ -111,8 +139,40 @@ public class HistoryService {
                 participant.getMember().getId(),
                 participant.getMember().getName(),
                 LiveDtos.gradeLabel(participant.getGradeSnapshot()),
+                participant.getStatus(),
+                attendanceLabel(participant),
                 participant.getGameCount(),
+                participant.getCheckedInAt(),
                 participant.getLastMatchEndedAt()
         );
+    }
+
+    private String attendanceLabel(SessionParticipant participant) {
+        if (participant.getStatus() == ParticipantStatus.ABSENT) return "불참";
+        if (participant.getStatus() == ParticipantStatus.NOT_ARRIVED) return "미참석";
+        if (participant.getGameCount() == 0) return "경기 없음";
+        return "정상 참여";
+    }
+
+    private List<HistoryDtos.CourtHistorySummary> courtHistories(
+            List<PlayMatch> matches,
+            Map<Long, List<MatchPlayer>> playersByMatchId
+    ) {
+        Map<String, List<HistoryDtos.MatchHistoryRow>> matchesByCourt = matches.stream()
+                .map(match -> matchRow(match, playersByMatchId.getOrDefault(match.getId(), List.of())))
+                .collect(Collectors.groupingBy(
+                        row -> row.courtName() == null ? "코트 미지정" : row.courtName(),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        return matchesByCourt.entrySet().stream()
+                .map(entry -> new HistoryDtos.CourtHistorySummary(
+                        entry.getKey(),
+                        entry.getValue().size(),
+                        entry.getValue().stream().mapToLong(HistoryDtos.MatchHistoryRow::durationSeconds).sum(),
+                        entry.getValue()
+                ))
+                .toList();
     }
 }

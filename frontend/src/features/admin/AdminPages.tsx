@@ -322,15 +322,9 @@ export function SessionsPage() {
   )
 }
 
-const statusLabel: Record<string, string> = {
-  PLANNED: '예정',
-  OPEN: '진행중',
-  CLOSED: '종료',
-  CANCELLED: '취소',
-}
-
 const formatSessionDate = (date: string) => date.replaceAll('-', '.')
 const formatClock = (value: string | null) => value ? new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)) : '--:--'
+const formatHistoryTime = (value: string | null) => value ? new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)) : '-'
 const formatDuration = (seconds: number) => {
   const safeSeconds = Math.max(0, Math.floor(seconds))
   const minutes = Math.floor(safeSeconds / 60)
@@ -338,11 +332,13 @@ const formatDuration = (seconds: number) => {
   return `${String(minutes).padStart(2, '0')}:${String(restSeconds).padStart(2, '0')}`
 }
 const matchTitle = (match: HistoryMatch) => `${match.teamA.map((player) => `${player.name} ${player.grade}`).join(' · ')} vs ${match.teamB.map((player) => `${player.name} ${player.grade}`).join(' · ')}`
+const attendanceClass = (label: string) => label === '정상 참여' ? 'good' : label === '경기 없음' ? 'ok' : 'bad'
 
 export function HistoryPage() {
   const [sessions, setSessions] = useState<HistorySessionSummary[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null)
   const [detail, setDetail] = useState<HistoryDetail | null>(null)
+  const [selectedParticipantId, setSelectedParticipantId] = useState<number | null>(null)
   const [message, setMessage] = useState('운동 이력을 불러오는 중입니다.')
 
   useEffect(() => {
@@ -354,7 +350,7 @@ export function HistoryPage() {
         setSessions(items)
         const firstSession = items[0]
         if (firstSession) setSelectedSessionId(firstSession.id)
-        else setMessage('등록된 세션이 없습니다.')
+        else setMessage('종료된 세션 이력이 없습니다.')
       })
       .catch(() => setMessage('운동 이력을 불러오지 못했습니다. 서버 상태를 확인해주세요.'))
 
@@ -371,6 +367,7 @@ export function HistoryPage() {
       .then((item) => {
         if (ignore) return
         setDetail(item)
+        setSelectedParticipantId(item.members[0]?.participantId ?? null)
         setMessage(`${formatSessionDate(item.session.sessionDate)} ${item.session.name} 이력을 불러왔습니다.`)
       })
       .catch(() => setMessage('세션 상세 이력을 불러오지 못했습니다.'))
@@ -380,45 +377,110 @@ export function HistoryPage() {
     }
   }, [selectedSessionId])
 
-  const totalPlayers = detail?.members.length ?? 0
-  const playedMembers = useMemo(() => detail?.members.filter((member) => member.games > 0).length ?? 0, [detail])
-  const topMembers = detail?.members.slice(0, 8) ?? []
+  const selectedMember = detail?.members.find((member) => member.participantId === selectedParticipantId) ?? detail?.members[0] ?? null
+  const selectedMemberMatches = useMemo(() => {
+    if (!detail || !selectedMember) return []
+    return detail.matches.filter((match) => [...match.teamA, ...match.teamB].some((player) => player.id === selectedMember.participantId))
+  }, [detail, selectedMember])
+  const hasMatchRows = (detail?.matches.length ?? 0) > 0
+  const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null
 
   return (
-    <AdminPage title="운동 이력" subtitle={message}>
+    <AdminPage
+      title="운동 이력"
+      subtitle={message}
+      actions={(
+        <label className="pc-history-session-select">
+          <span>종료 세션</span>
+          <select value={selectedSessionId ?? ''} onChange={(event) => setSelectedSessionId(Number(event.target.value) || null)} disabled={sessions.length === 0}>
+            {sessions.length === 0 && <option value="">종료된 세션 없음</option>}
+            {sessions.map((session) => (
+              <option value={session.id} key={session.id}>
+                {formatSessionDate(session.sessionDate)} · {session.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    >
       <div className="pc-history-stat-grid">
-        <AppCard><span className="pc-history-stat-label">완료 경기</span><strong className="pc-stat">{detail?.matches.length ?? 0}경기</strong></AppCard>
-        <AppCard><span className="pc-history-stat-label">참가자</span><strong className="pc-stat">{totalPlayers}명</strong></AppCard>
-        <AppCard><span className="pc-history-stat-label">경기 참여</span><strong className="pc-stat">{playedMembers}명</strong></AppCard>
+        <AppCard><span className="pc-history-stat-label">완료 경기</span><strong className="pc-stat">{detail?.summary.totalMatches ?? 0}경기</strong></AppCard>
+        <AppCard><span className="pc-history-stat-label">참가자</span><strong className="pc-stat">{detail?.summary.totalParticipants ?? 0}명</strong></AppCard>
+        <AppCard><span className="pc-history-stat-label">경기 참여</span><strong className="pc-stat">{detail?.summary.playedParticipants ?? 0}명</strong></AppCard>
+        <AppCard><span className="pc-history-stat-label">불참/미참석</span><strong className="pc-stat">{(detail?.summary.absentCount ?? 0) + (detail?.summary.notArrivedCount ?? 0)}명</strong></AppCard>
       </div>
 
-      <div className="pc-admin-grid pc-history-grid">
-        <AppCard title="세션 이력">
-          <div className="pc-history-session-list">
-            {sessions.length === 0 && <div className="pc-empty-note">표시할 세션이 없습니다.</div>}
-            {sessions.map((session) => (
-              <button type="button" className={`pc-history-session-button ${selectedSessionId === session.id ? 'selected' : ''}`} key={session.id} onClick={() => setSelectedSessionId(session.id)}>
-                <span>{formatSessionDate(session.sessionDate)}</span>
-                <strong>{session.name}</strong>
-                <b>{session.matchCount}경기 · {statusLabel[session.status] ?? session.status}</b>
-              </button>
-            ))}
-          </div>
+      {selectedSession && (
+        <div className="pc-history-session-strip">
+          <strong>{selectedSession.name}</strong>
+          <span>{formatSessionDate(selectedSession.sessionDate)}</span>
+          <span>{selectedSession.participantCount}명</span>
+          <span>{selectedSession.matchCount}경기</span>
+        </div>
+      )}
+
+      <div className="pc-history-main-grid">
+        <AppCard title="선택 참가자 상세">
+          {!selectedMember && <div className="pc-empty-note">참가자 기록이 없습니다.</div>}
+          {selectedMember && (
+            <div className="pc-history-detail-panel">
+              <div>
+                <span className={`pc-history-status-pill ${attendanceClass(selectedMember.attendanceLabel)}`}>{selectedMember.attendanceLabel}</span>
+                <strong>{selectedMember.name} {selectedMember.grade}</strong>
+                <small>{selectedMember.games}경기 · 마지막 경기 {formatHistoryTime(selectedMember.lastMatchEndedAt)}</small>
+              </div>
+              <div className="pc-history-detail-grid">
+                <span>체크인 <b>{formatHistoryTime(selectedMember.checkedInAt)}</b></span>
+                <span>참여 경기 <b>{selectedMember.games}경기</b></span>
+              </div>
+              <div className="pc-history-mini-list">
+                {selectedMemberMatches.length === 0 && (
+                  <div className="pc-empty-note">
+                    {selectedMember.games > 0 ? `${selectedMember.games}경기 기록은 있으나 완료 경기 상세가 없습니다.` : '참여한 경기가 없습니다.'}
+                  </div>
+                )}
+                {selectedMemberMatches.map((match) => (
+                  <div key={match.id}>
+                    <strong>{match.courtName ?? '코트 미지정'}</strong>
+                    <span>{formatClock(match.startedAt)} - {formatClock(match.finishedAt)} · {formatDuration(match.durationSeconds)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </AppCard>
 
-        <AppCard title="회원 운동 요약">
-          <div className="pc-history-member-list">
-            {topMembers.length === 0 && <div className="pc-empty-note">회원 요약이 없습니다.</div>}
-            {topMembers.map((member, index) => (
-              <div className="pc-history-member-row" key={member.participantId}>
-                <span>{index + 1}</span>
-                <strong>{member.name} {member.grade}</strong>
-                <b>{member.games}경기</b>
+        <AppCard title="코트별 진행 이력">
+          <div className="pc-history-court-list">
+            {!detail?.courtHistories.length && (
+              <div className="pc-empty-note">
+                {hasMatchRows ? '코트별 기록이 없습니다.' : '완료 경기 상세가 없어 코트별 기록을 만들 수 없습니다.'}
+              </div>
+            )}
+            {detail?.courtHistories.map((court) => (
+              <div className="pc-history-court-card" key={court.courtName}>
+                <strong>{court.courtName}</strong>
+                <span>{court.matchCount}경기 · 총 {formatDuration(court.totalDurationSeconds)}</span>
+                <small>평균 {formatDuration(court.matchCount ? court.totalDurationSeconds / court.matchCount : 0)}</small>
               </div>
             ))}
           </div>
         </AppCard>
       </div>
+
+      <AppCard title="참가자 기록" className="pc-section-gap">
+        <div className="pc-history-member-list">
+          {!detail?.members.length && <div className="pc-empty-note">참가자 기록이 없습니다.</div>}
+          {detail?.members.map((member, index) => (
+            <button type="button" className={`pc-history-member-row ${selectedParticipantId === member.participantId ? 'selected' : ''}`} key={member.participantId} onClick={() => setSelectedParticipantId(member.participantId)}>
+              <span>{index + 1}</span>
+              <strong>{member.name} {member.grade}</strong>
+              <em className={`pc-history-status-pill ${attendanceClass(member.attendanceLabel)}`}>{member.attendanceLabel}</em>
+              <b>{member.games}경기</b>
+            </button>
+          ))}
+        </div>
+      </AppCard>
 
       <AppCard title="완료 경기 목록" className="pc-section-gap">
         <div className="pc-history-match-list">

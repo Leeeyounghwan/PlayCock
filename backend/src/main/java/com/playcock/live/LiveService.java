@@ -13,13 +13,16 @@ import com.playcock.participant.SessionParticipant;
 import com.playcock.participant.SessionParticipantRepository;
 import com.playcock.session.PlaySession;
 import com.playcock.session.SessionService;
+import com.playcock.session.SessionStatus;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class LiveService {
@@ -45,7 +48,7 @@ public class LiveService {
 
     @Transactional(readOnly = true)
     public LiveDtos.LiveSnapshotResponse snapshot(Long sessionId) {
-        PlaySession session = sessionService.get(sessionId);
+        PlaySession session = openSession(sessionId);
         InviteCode inviteCode = sessionService.inviteFor(sessionId);
         List<SessionParticipant> participants = participantRepository.findAllBySessionIdOrderByIdAsc(sessionId);
         List<Court> courts = courtRepository.findAllBySessionIdOrderBySortOrderAscIdAsc(sessionId);
@@ -80,7 +83,7 @@ public class LiveService {
 
     @Transactional(readOnly = true)
     public LiveDtos.QueueBoardResponse queueBoard(Long sessionId) {
-        sessionService.get(sessionId);
+        openSession(sessionId);
         Map<ParticipantStatus, List<LiveDtos.LiveParticipantResponse>> participantGroups = groupParticipants(
                 participantRepository.findAllBySessionIdOrderByIdAsc(sessionId)
         );
@@ -88,6 +91,14 @@ public class LiveService {
                 participantGroups.getOrDefault(ParticipantStatus.WAITING, List.of()),
                 LiveDtos.statusGroups(participantGroups)
         );
+    }
+
+    private PlaySession openSession(Long sessionId) {
+        PlaySession session = sessionService.get(sessionId);
+        if (session.getStatus() != SessionStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Live board requires an open session");
+        }
+        return session;
     }
 
     private Map<Long, List<MatchPlayer>> playersByMatchId(List<PlayMatch> matches) {

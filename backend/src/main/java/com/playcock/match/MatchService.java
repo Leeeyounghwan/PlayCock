@@ -9,6 +9,7 @@ import com.playcock.participant.SessionParticipant;
 import com.playcock.participant.SessionParticipantRepository;
 import com.playcock.session.PlaySession;
 import com.playcock.session.SessionService;
+import com.playcock.session.SessionStatus;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -48,6 +49,9 @@ public class MatchService {
         }
 
         PlaySession session = sessionService.get(sessionId);
+        if (session.getStatus() != SessionStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Matches can only be created for open sessions");
+        }
         List<SessionParticipant> participants = participantIds.stream()
                 .map(this::participant)
                 .toList();

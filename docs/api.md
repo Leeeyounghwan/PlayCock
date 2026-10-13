@@ -70,3 +70,29 @@ GET /api/live/sessions/{sessionId}/queue-board
 - `session_participant.checked_in_at`
 
 `WAITING`으로 전환하면 체크인 시간이 없을 때 현재 시각을 기록한다. `NOT_ARRIVED`로 전환하면 현재 세션의 체크인 시간을 초기화한다.
+
+## History
+
+```text
+GET /api/admin/history/sessions
+GET /api/admin/history/sessions/{sessionId}
+```
+
+`sessions`는 종료된 세션(`CLOSED`)만 내려준다.
+
+세션 요약 응답에는 아래 항목이 포함된다.
+
+- 세션 기본 정보
+- 완료 경기 수
+- 참가자 수
+- 불참 수
+- 미참석 수
+
+세션 상세 응답에는 아래 항목이 포함된다.
+
+- `summary`: 참가자, 경기 참여, 완료 경기, 불참/미참석/경기 없음 집계
+- `members`: 참가자별 상태, 출석 라벨, 경기 수, 체크인/마지막 경기 시간
+- `matches`: 완료 경기 목록
+- `courtHistories`: 코트별 완료 경기 수와 총 사용 시간
+
+지각 판정은 아직 세션 예정 시작 시간이 없어 History 응답에 포함하지 않는다.
