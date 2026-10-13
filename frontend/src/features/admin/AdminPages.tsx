@@ -1,6 +1,7 @@
 import AppCard from '@/components/common/AppCard'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
+import { fetchMonthlyAnalytics, type MonthlyAnalytics } from './analyticsApi'
 import { fetchHistoryDetail, fetchHistorySessions, type HistoryDetail, type HistoryMatch, type HistorySessionSummary } from './historyApi'
 import { closeSession, createSession, deleteSessionParticipant, fetchMembers, fetchSessionCourts, fetchSessionParticipants, fetchSessions, importSessionParticipants, openSession, regenerateInviteCode, type AdminCourt, type AdminMember, type AdminParticipant, type AdminSession } from './sessionApi'
 
@@ -50,6 +51,7 @@ const participantStatusLabel: Record<AdminParticipant['status'], string> = {
 }
 
 const todayInput = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
+const currentMonthInput = () => todayInput().slice(0, 7)
 const formatMonthLabel = (month: string) => `${month.slice(0, 4)}년 ${month.slice(5, 7)}월`
 const isManageableSession = (session: AdminSession) => session.status !== 'CLOSED' && session.status !== 'CANCELLED'
 
@@ -507,34 +509,144 @@ export function HistoryPage() {
 }
 
 export function AnalyticsPage() {
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthInput())
+  const [analytics, setAnalytics] = useState<MonthlyAnalytics | null>(null)
+  const [message, setMessage] = useState('월간 통계를 불러오는 중입니다.')
+
+  useEffect(() => {
+    let ignore = false
+
+    fetchMonthlyAnalytics(selectedMonth)
+      .then((item) => {
+        if (ignore) return
+        setAnalytics(item)
+        setMessage(`${formatMonthLabel(item.month)} 종료 세션 통계를 불러왔습니다.`)
+      })
+      .catch(() => setMessage('월간 통계를 불러오지 못했습니다. 서버 상태를 확인해주세요.'))
+
+    return () => {
+      ignore = true
+    }
+  }, [selectedMonth])
+
+  const topGameMembers = analytics?.memberStats.slice(0, 5) ?? []
+  const topSessionMembers = [...(analytics?.memberStats ?? [])]
+    .sort((first, second) => second.sessionCount - first.sessionCount || second.gameCount - first.gameCount || first.name.localeCompare(second.name, 'ko-KR'))
+    .slice(0, 5)
+  const attentionMembers = (analytics?.memberStats ?? [])
+    .filter((member) => member.absentCount + member.notArrivedCount + member.noGameCount > 0)
+    .sort((first, second) => {
+      const firstScore = first.absentCount + first.notArrivedCount + first.noGameCount
+      const secondScore = second.absentCount + second.notArrivedCount + second.noGameCount
+      return secondScore - firstScore || first.name.localeCompare(second.name, 'ko-KR')
+    })
+    .slice(0, 5)
+  const summary = analytics?.summary
+
   return (
-    <AdminPage title="월간 통계" subtitle="월간 모임 횟수, 완료 경기, 참석 랭킹을 확인합니다.">
+    <AdminPage
+      title="월간 통계"
+      subtitle={message}
+      actions={(
+        <label className="pc-history-session-select">
+          <span>조회 월</span>
+          <input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value || currentMonthInput())} />
+        </label>
+      )}
+    >
       <div className="pc-stat-grid">
-        {['모임 횟수 9회', '총 완료 경기 142', '평균 참석 21.4명', '활동 회원 34명'].map((stat) => (
-          <AppCard key={stat}>
-            <strong className="pc-stat">{stat}</strong>
-          </AppCard>
-        ))}
+        <AppCard><span className="pc-history-stat-label">운동 세션</span><strong className="pc-stat">{summary?.sessionCount ?? 0}회</strong></AppCard>
+        <AppCard><span className="pc-history-stat-label">완료 경기</span><strong className="pc-stat">{summary?.matchCount ?? 0}경기</strong></AppCard>
+        <AppCard><span className="pc-history-stat-label">총 참가</span><strong className="pc-stat">{summary?.participantCount ?? 0}명</strong></AppCard>
+        <AppCard><span className="pc-history-stat-label">경기 참여</span><strong className="pc-stat">{summary?.playedParticipantCount ?? 0}명</strong></AppCard>
       </div>
-      <AppCard title="일자별 완료 경기 수" className="pc-chart-card">
-        {[13, 17, 15, 21, 18, 24, 16, 18].map((value) => (
-          <button type="button" className="pc-bar" style={{ height: `${value * 7}px` }} key={value} onClick={() => alert(`${value}경기`)}>
-            {value}
-          </button>
-        ))}
+
+      <div className="pc-analytics-alert-grid">
+        <AppCard><span className="pc-history-stat-label">불참/미참석</span><strong className="pc-stat">{(summary?.absentCount ?? 0) + (summary?.notArrivedCount ?? 0)}명</strong></AppCard>
+        <AppCard><span className="pc-history-stat-label">경기 없음</span><strong className="pc-stat">{summary?.noGameCount ?? 0}명</strong></AppCard>
+      </div>
+
+      <AppCard title="세션별 완료 경기" className="pc-chart-card pc-section-gap">
+        <div className="pc-analytics-bars">
+          {analytics?.sessionStats.length === 0 && <div className="pc-empty-note">해당 월의 종료 세션이 없습니다.</div>}
+          {analytics?.sessionStats.map((session) => (
+            <button type="button" className="pc-bar" style={{ height: `${Math.max(36, session.matchCount * 18)}px` }} key={session.sessionId} title={`${session.name} · ${session.matchCount}경기`}>
+              <strong>{session.matchCount}</strong>
+              <span>{session.sessionDate.slice(5).replace('-', '.')}</span>
+            </button>
+          ))}
+        </div>
       </AppCard>
+
       <div className="pc-admin-grid pc-section-gap">
-        <AppCard title="월별 최다 참석자">
-          {['김민수 B 88.9%', '이영환 B 88.9%', '박준호 C 77.8%'].map((row) => (
-            <div className="pc-queue-row" key={row}><strong>{row}</strong></div>
-          ))}
+        <AppCard title="게임 수 TOP">
+          <div className="pc-analytics-list">
+            {topGameMembers.length === 0 && <div className="pc-empty-note">회원별 경기 기록이 없습니다.</div>}
+            {topGameMembers.map((member, index) => (
+              <div className="pc-analytics-row" key={member.memberId}>
+                <span>{index + 1}</span>
+                <strong>{member.name} {member.grade}</strong>
+                <b>{member.gameCount}경기</b>
+                <small>{member.sessionCount}회 참석</small>
+              </div>
+            ))}
+          </div>
         </AppCard>
-        <AppCard title="개인 경기 수 TOP">
-          {['김민수 B 32경기', '이영환 B 30경기', '정우 C 28경기'].map((row) => (
-            <div className="pc-queue-row" key={row}><strong>{row}</strong></div>
-          ))}
+        <AppCard title="참가 횟수 TOP">
+          <div className="pc-analytics-list">
+            {topSessionMembers.length === 0 && <div className="pc-empty-note">회원별 참가 기록이 없습니다.</div>}
+            {topSessionMembers.map((member, index) => (
+              <div className="pc-analytics-row" key={member.memberId}>
+                <span>{index + 1}</span>
+                <strong>{member.name} {member.grade}</strong>
+                <b>{member.sessionCount}회</b>
+                <small>{member.gameCount}경기</small>
+              </div>
+            ))}
+          </div>
         </AppCard>
       </div>
+
+      <div className="pc-admin-grid pc-section-gap">
+        <AppCard title="주의 필요">
+          <div className="pc-analytics-list">
+            {attentionMembers.length === 0 && <div className="pc-empty-note">주의가 필요한 기록이 없습니다.</div>}
+            {attentionMembers.map((member) => (
+              <div className="pc-analytics-row" key={member.memberId}>
+                <strong>{member.name} {member.grade}</strong>
+                <small>불참 {member.absentCount} · 미참석 {member.notArrivedCount} · 경기 없음 {member.noGameCount}</small>
+              </div>
+            ))}
+          </div>
+        </AppCard>
+        <AppCard title="파트너 조합 TOP">
+          <div className="pc-analytics-list">
+            {analytics?.partnerPairs.length === 0 && <div className="pc-empty-note">완료 경기 상세가 없어 조합 통계를 만들 수 없습니다.</div>}
+            {analytics?.partnerPairs.map((pair, index) => (
+              <div className="pc-analytics-row" key={pair.label}>
+                <span>{index + 1}</span>
+                <strong>{pair.label}</strong>
+                <b>{pair.count}회</b>
+              </div>
+            ))}
+          </div>
+        </AppCard>
+      </div>
+
+      <AppCard title="월간 세션 기록" className="pc-section-gap">
+        <div className="pc-analytics-session-list">
+          {analytics?.sessionStats.length === 0 && <div className="pc-empty-note">해당 월의 종료 세션이 없습니다.</div>}
+          {analytics?.sessionStats.map((session) => (
+            <div className="pc-analytics-session-row" key={session.sessionId}>
+              <strong>{formatSessionDate(session.sessionDate)} · {session.name}</strong>
+              <span>{session.participantCount}명</span>
+              <span>{session.matchCount}경기</span>
+              <span>경기 참여 {session.playedParticipantCount}명</span>
+              <span>불참/미참석 {session.absentCount + session.notArrivedCount}명</span>
+            </div>
+          ))}
+        </div>
+      </AppCard>
     </AdminPage>
   )
 }

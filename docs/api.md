@@ -96,3 +96,20 @@ GET /api/admin/history/sessions/{sessionId}
 - `courtHistories`: 코트별 완료 경기 수와 총 사용 시간
 
 지각 판정은 아직 세션 예정 시작 시간이 없어 History 응답에 포함하지 않는다.
+
+## Analytics
+
+```text
+GET /api/admin/analytics/monthly?month=2026-09
+```
+
+월간 통계는 해당 월의 종료된 세션(`CLOSED`)만 집계한다.
+
+월간 통계 응답에는 아래 항목이 포함된다.
+
+- `summary`: 세션 수, 참가자 수, 경기 참여자 수, 완료 경기 수, 불참/미참석/경기 없음 수
+- `memberStats`: 회원별 참가 횟수, 경기 수, 불참/미참석/경기 없음 수, 마지막 참여일
+- `sessionStats`: 세션별 참가자 수, 경기 참여자 수, 완료 경기 수, 상태 집계
+- `partnerPairs`: 완료 경기의 같은 팀 조합 TOP 목록
+
+지각 통계는 아직 세션 예정 시작 시간이 없어 Analytics 응답에 포함하지 않는다.

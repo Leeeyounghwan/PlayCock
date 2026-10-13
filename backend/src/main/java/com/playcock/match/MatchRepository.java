@@ -12,5 +12,8 @@ public interface MatchRepository extends JpaRepository<PlayMatch, Long> {
     @EntityGraph(attributePaths = {"court", "session"})
     List<PlayMatch> findAllBySessionIdAndStatusOrderByFinishedAtDescIdDesc(Long sessionId, MatchStatus status);
 
+    @EntityGraph(attributePaths = {"court", "session"})
+    List<PlayMatch> findAllBySessionIdInAndStatusOrderByFinishedAtAscIdAsc(Collection<Long> sessionIds, MatchStatus status);
+
     long countBySessionIdAndStatus(Long sessionId, MatchStatus status);
 }

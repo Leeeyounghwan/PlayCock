@@ -940,7 +940,8 @@ a {
   font-weight: 800;
 }
 
-.pc-history-session-select select {
+.pc-history-session-select select,
+.pc-history-session-select input {
   border: 1px solid var(--pc-line);
   border-radius: 8px;
   background: #fffefd;
@@ -1239,15 +1240,102 @@ a {
   white-space: nowrap;
 }
 
+.pc-analytics-alert-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.pc-analytics-bars {
+  min-height: 218px;
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  overflow-x: auto;
+  padding-top: 10px;
+}
+
 .pc-bar {
-  width: 64px;
+  flex: 0 0 64px;
   border: 0;
   border-radius: 8px 8px 0 0;
   background: var(--pc-lime);
   color: #233013;
   font-weight: 800;
-  margin-right: 12px;
-  vertical-align: bottom;
+  min-height: 36px;
+  padding: 8px 6px;
+  display: grid;
+  align-content: end;
+  justify-items: center;
+  gap: 3px;
+}
+
+.pc-bar span {
+  font-size: 11px;
+  color: #526331;
+}
+
+.pc-analytics-list,
+.pc-analytics-session-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pc-analytics-row,
+.pc-analytics-session-row {
+  min-height: 50px;
+  border: 1px solid var(--pc-line);
+  border-radius: 10px;
+  background: #fffefd;
+  padding: 10px 12px;
+  display: grid;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pc-analytics-row {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.pc-analytics-row span {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--pc-mint);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pc-analytics-row strong,
+.pc-analytics-session-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc-analytics-row b,
+.pc-analytics-row small,
+.pc-analytics-session-row span {
+  border-radius: 999px;
+  background: #f4f6ef;
+  color: var(--pc-muted);
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pc-analytics-row small {
+  background: transparent;
+  padding: 0;
+}
+
+.pc-analytics-session-row {
+  grid-template-columns: minmax(0, 1fr) repeat(4, auto);
 }
 
 .pc-notice {
@@ -2061,7 +2149,8 @@ body::-webkit-scrollbar,
   }
 
   .pc-stat-grid,
-  .pc-history-stat-grid {
+  .pc-history-stat-grid,
+  .pc-analytics-alert-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2262,7 +2351,9 @@ body::-webkit-scrollbar,
 
   .pc-history-member-row,
   .pc-history-detail-grid,
-  .pc-history-court-list {
+  .pc-history-court-list,
+  .pc-analytics-row,
+  .pc-analytics-session-row {
     grid-template-columns: 1fr;
   }
 
