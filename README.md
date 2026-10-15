@@ -1,340 +1,127 @@
-# PlayCock
+# 🏸 PlayCock
+**배드민턴 모임의 경기 운영을 관리하는 웹 애플리케이션**
 
-PlayCock은 배드민턴 모임 운영을 위한 경기 관리 웹 애플리케이션입니다. 관리자는 운동 세션을 만들고, 참가자를 사전 등록하며, Live Dashboard에서 대기열·코트·매치 진행 상태를 관리할 수 있습니다.
+![Java](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.3.7-6DB33F?logo=springboot&logoColor=white) ![React](https://img.shields.io/badge/React-TypeScript-61DAFB?logo=react&logoColor=black) ![DB](https://img.shields.io/badge/Local_DB-H2-555555) ![Status](https://img.shields.io/badge/Status-In_Development-orange)
 
-현재 프로젝트는 로컬 개발 환경에서 동작하는 단계이며, 추후 AWS Lightsail 등 실제 운영 환경 배포를 고려해 프론트엔드와 백엔드를 분리해 구성했습니다.
+> **개발 상태:** 로컬 개발 단계. 관리자 중심 기능을 구현 중이며, 운영 배포와 사용자용 초대코드 입장 기능은 완료된 서비스로 간주하지 않습니다.
 
+## 1. 문제와 목표
 
-## 서비스 흐름
+배드민턴 모임에서는 참가자의 출석·휴식 상태, 대기시간, 게임 횟수와 코트 사용 현황을 동시에 확인해야 합니다. 수작업 배정으로 발생하는 누락과 불균형을 줄이기 위해 **세션 생성 → 참가자 등록 → 대기열 → 매치 생성 → 코트 배정 → 경기 종료 및 기록**을 연결한 관리 화면을 만들었습니다.
+
+## 2. 핵심 시나리오
 
 ```mermaid
 flowchart LR
-    A[신규 운동 일정 생성] --> B[초대코드 생성]
-    B --> C[참가자 사전 등록]
-    C --> D[Live Dashboard 운영]
-    D --> E[대기열 및 상태 관리]
-    D --> F[대기 매치 생성]
-    F --> G[코트 배정 및 경기 시작]
-    G --> H[경기 종료 및 기록 저장]
-    H --> I[운동 이력 조회]
-    I --> J[월간 통계 및 운영 관리]
+ A[운동 세션 생성] --> B[초대코드 및 참가자 등록]
+ B --> C[대기열과 상태 관리]
+ C --> D[대기 매치 생성]
+ D --> E[코트 배정 · 경기 시작]
+ E --> F[경기 종료 · DB 기록]
+ F --> G[운동 이력 · 월간 통계]
 ```
 
-## 시스템 구성
+| 영역 | 주요 동작 | 현재 상태 |
+| --- | --- | --- |
+| Live Dashboard | 대기열·코트·매치 표시, 참가자 상태 변경, 경기 시작/종료 | 관리자 기능 중심 구현 |
+| Session | 일정 생성, 참가자 사전 등록, 초대코드 생성·재발급 | 구현 |
+| History | 종료 세션·참가자·완료 경기 이력 조회 | 기본 기능 구현 |
+| Analytics | 월별 세션, 참가/경기 통계 및 랭킹 | 프로젝트 README 기준 구현 |
+| Finance | 운영비 관리 | 확장 진행 중 |
+| Viewer | 코드 입력 후 사용자용 조회 화면 | 후속 구현 대상 |
+
+상세 구현 현황은 [작업 현황](docs/project-todo.md)을 확인하세요. 문서에 기록된 완료 표시는 기능 개발 이력이며, 운영 환경에서의 검증 완료를 뜻하지 않습니다.
+
+## 3. 아키텍처와 기술 선택
 
 ```mermaid
 flowchart TB
-    subgraph Frontend[Frontend - React + Vite]
-        L[Live Dashboard]
-        S[세션 관리]
-        H[운동 이력]
-        A[월간 통계]
-        F[운영비 관리]
-    end
-
-    subgraph Backend[Backend - Spring Boot]
-        API[REST API]
-        Domain[Session / Participant / Match / Court / Invite]
-        History[History API]
-    end
-
-    subgraph Database[Local Database]
-        H2[(H2 file DB)]
-        Flyway[Flyway Migration]
-    end
-
-    Frontend --> API
-    API --> Domain
-    API --> History
-    Domain --> H2
-    History --> H2
-    Flyway --> H2
+ Browser[React · TypeScript · Vite] --> API[Spring Boot REST API]
+ API --> Domain[Session / Participant / Match / Court / Invite / History]
+ Domain --> JPA[Spring Data JPA]
+ JPA --> H2[(Local H2 File DB)]
+ Flyway[Flyway Migration] --> H2
 ```
 
-## 주요 기능
+| 영역 | 기술 | 도입 목적 |
+| --- | --- | --- |
+| Frontend | React, TypeScript, Vite, React Router, React Query, SCSS | 관리자 화면과 서버 상태 조회 분리 |
+| Backend | Java 21, Spring Boot 3.3.7, Spring Web, JPA, Validation | 도메인별 API와 데이터 처리 |
+| Storage | 로컬 H2 파일 DB | 개발 중 재기동 후 상태 확인 |
+| Schema | Flyway | 스키마 변경 관리 |
+| Planned | PostgreSQL 등 운영 DB | 실제 배포 전 전환·검증 예정 |
 
-### Live Dashboard
+**핵심 설계 관점**
+- **상태 흐름:** 대기·매치 준비·경기 중·휴식·레슨·미입장·불참 등 참가자 상태와 매치 라이프사이클을 연동합니다.
+- **기록 보존:** 매치 시작/종료, 참가자 상태 변경, 게임 횟수를 DB에 반영합니다.
+- **배정 규칙:** 적은 게임 수, 긴 대기시간, 최근 경기 여부를 고려하는 **규칙 기반 추천 방식**을 문서화했습니다. 추천 알고리즘의 현재 프론트 프로토타입과 향후 백엔드 서비스화는 구분해야 합니다.
+- **초대코드:** 세션별 생성·재발급 시 이전 활성 코드를 비활성화하는 흐름을 설계했습니다.
 
-- 대기열 관리
-- 참가자 상태 변경
-  - 대기
-  - 매치 준비
-  - 경기중
-  - 휴식
-  - 레슨
-  - 미입장
-  - 불참
-- 대기시간 표시 및 정렬
-- 대기 매치 생성
-- 코트 배정
-- 경기 시작/종료
-- 코트 상태 관리
-- 매치 라이프사이클 DB 저장
+### 상세 설계 문서
+[Architecture](docs/architecture.md) · [Database](docs/database.md) · [REST API](docs/api.md) · [Matching Algorithm](docs/matching-algorithm.md) · [Development Guide](docs/development-guide.md)
 
-### 세션 관리
-
-- 신규 운동 일정 생성
-- 관리 대상 세션 목록 조회
-- 세션별 참가자 사전 등록
-- 선택 추가 / 전체 추가
-- 세션 준비 현황 확인
-  - 참가자 수
-  - 코트 수
-  - 초대코드
-- 초대코드 복사
-- 초대코드 랜덤 재생성
-- 등록 참가자 목록 조회
-- 등록 참가자 삭제
-  - 경기 배정 또는 경기 이력이 있는 참가자는 삭제 불가
-
-### 운동 이력
-
-- 종료된 세션 기준 운동 이력 조회
-- 세션별 참가자 목록 및 상태 표시
-- 참가자별 경기 수 및 상세 이력 확인
-- 세션별 완료 매치 기록 조회
-- 코트별 진행 이력 조회
-
-지각 판정은 세션 예정 시작 시간 기준이 필요하므로 추후 별도 단계에서 다룰 예정입니다.
-
-### 월간 통계
-
-- 월별 종료 세션 기준 통계 조회
-- 월별 총 세션 수, 참가자 수, 완료 경기 수 확인
-- 회원별 참가 횟수 및 경기 수 랭킹
-- 불참, 미참석, 경기 없음 집계
-- 세션별 월간 기록 조회
-- 자주 함께 경기한 파트너 조합 통계 확인
-
-## 기술 스택
-
-### Frontend
-
-- React
-- Vite
-- TypeScript
-- React Router
-- React Query
-- SCSS
-
-### Backend
-
-- Java 21
-- Spring Boot 3.3
-- Spring Web
-- Spring Data JPA
-- Bean Validation
-- Flyway
-- H2 Database
-- PostgreSQL Driver
-
-### Local Database
-
-- H2 file DB
-- 기본 경로: `backend/.local-data/playcock`
-- 로컬 DB 파일은 Git에 포함하지 않습니다.
-
-## 프로젝트 구조
+## 4. 코드 구성
 
 ```text
 PlayCock/
 ├── backend/
-│   ├── src/main/java/com/playcock/
-│   │   ├── court/
-│   │   ├── finance/
-│   │   ├── history/
-│   │   ├── invite/
-│   │   ├── live/
-│   │   ├── match/
-│   │   ├── member/
-│   │   ├── participant/
-│   │   └── session/
-│   ├── src/main/resources/
-│   │   ├── db/migration/
-│   │   ├── db/dev-migration/
-│   │   ├── application.yml
-│   │   └── application-local.yml
-│   ├── build.gradle
-│   └── gradlew
+│   ├── src/main/java/com/playcock/   # session, participant, match, court 등
+│   ├── src/main/resources/db/         # Flyway migration
+│   └── build.gradle
 ├── frontend/
-│   ├── src/app/
-│   ├── src/components/
-│   ├── src/features/
-│   │   ├── admin/
-│   │   └── live/
-│   ├── src/layouts/
-│   ├── src/styles/
-│   └── package.json
-├── docs/
+│   └── src/                           # app, components, features, layouts
+├── docs/                              # API·DB·설계·작업 현황
 └── README.md
 ```
 
-## 실행 방법
+## 5. 로컬 실행
 
-### 1. 백엔드 실행
+**요구 환경:** Java 21, Node.js/npm
 
+백엔드:
 ```bash
 cd backend
 ./gradlew bootRun --args='--spring.profiles.active=local'
 ```
+Windows에서는 `gradlew.bat`를 사용할 수 있습니다. 기본 API 주소는 `http://localhost:8080`이며 로컬 H2 Console은 `http://localhost:8080/h2-console`입니다. DB 파일은 `backend/.local-data/`에 저장되며 Git에 포함하지 않습니다.
 
-기본 실행 주소는 아래와 같습니다.
-
-```text
-http://localhost:8080
-```
-
-H2 Console은 local profile에서 사용할 수 있습니다.
-
-```text
-http://localhost:8080/h2-console
-```
-
-기본 JDBC URL은 아래와 같습니다.
-
-```text
-jdbc:h2:file:./.local-data/playcock
-```
-
-### 2. 프론트엔드 실행
-
+프론트엔드(별도 터미널):
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+개발 서버 기본 주소는 `http://localhost:5173`입니다.
 
-기본 실행 주소는 아래와 같습니다.
+| 관리자 화면 | 경로 |
+| --- | --- |
+| Live Dashboard | `/admin/live` |
+| 세션 관리 | `/admin/sessions` |
+| 운동 이력 | `/admin/history` |
+| 월간 통계 | `/admin/analytics` |
+| 운영비 관리 | `/admin/finance` |
 
-```text
-http://localhost:5173
-```
-
-관리자 화면은 아래 경로에서 확인할 수 있습니다.
-
-```text
-http://localhost:5173/admin/live
-http://localhost:5173/admin/sessions
-http://localhost:5173/admin/history
-http://localhost:5173/admin/analytics
-http://localhost:5173/admin/finance
-```
-
-## 빌드 및 검증
-
-### Frontend
-
-```bash
-cd frontend
-npm run build
-```
-
-### Backend
+## 6. 검증
 
 ```bash
 cd backend
 ./gradlew test
+
+cd ../frontend
+npm run build
 ```
 
-## 주요 문서
+현재 저장소에는 테스트 실행 설정이 있으나, 위 명령이 **충분한 자동화 테스트 커버리지를 보장하지는 않습니다.** 특히 동시 경기 배정, 중복 참여, 상태 전이 실패, 트랜잭션 정합성에 대한 테스트 보강이 다음 과제입니다. 실제 화면 이미지는 검증된 자료 확보 후 추가할 예정입니다.
 
-프로젝트 상세 문서는 `docs/` 아래에 정리되어 있습니다.
+## 7. 남은 과제
 
-- `docs/project-handoff.md`
-- `docs/project-todo.md`
-- `docs/architecture.md`
-- `docs/database.md`
-- `docs/api.md`
-- `docs/development-guide.md`
-- `docs/implementation-plan.md`
-- `docs/matching-algorithm.md`
+- 사용자용 초대코드 입장 및 모바일 조회 흐름
+- 운영비 관리 기능 확장
+- 인증·권한 및 초대코드 접근 보안 검토
+- 핵심 비즈니스 규칙의 단위·통합 테스트
+- 운영 DB, 배포, 백업 및 환경 분리
 
-신규 참여자는 아래 순서로 확인하는 것을 권장합니다.
+작업 우선순위와 범위는 [Project To-Do](docs/project-todo.md) 및 [Implementation Plan](docs/implementation-plan.md)을 참고하세요.
 
-1. `docs/project-handoff.md`
-2. `docs/project-todo.md`
-3. `docs/architecture.md`
-4. `docs/database.md`
-5. `docs/api.md`
-6. `docs/development-guide.md`
-
-## Git 관리 주의사항
-
-아래 항목은 Git에 포함하지 않습니다.
-
-- `node_modules/`
-- `dist/`
-- `build/`
-- `.gradle/`
-- `.env`
-- `.DS_Store`
-- `backend/.local-data/`
-- `INSPINIA_React/`
-
-`backend/.local-data/`에는 로컬 H2 DB 파일이 생성되므로 GitHub에 올리지 않습니다.
-
-## 커밋 메시지 규칙
-
-커밋 메시지는 아래 형식을 사용합니다.
-
-```text
-타입: 제목
-
-- 변경 내용 1
-- 변경 내용 2
-```
-
-예시:
-
-```text
-feat: 세션 관리 초대코드 기능 추가
-
-- 초대코드 랜덤 생성 API 추가
-- 기존 활성 초대코드 비활성화 처리
-- 세션 관리 화면에 복사 및 재생성 버튼 추가
-```
-
-주요 타입은 아래와 같습니다.
-
-- `feat`: 기능 추가
-- `fix`: 버그 수정
-- `docs`: 문서 수정
-- `style`: 스타일 수정
-- `refactor`: 리팩터링
-- `build`: 빌드 설정 수정
-- `chore`: 기타 작업
-
-## 남은 작업
-
-### Phase 10. 운영비 관리 화면 구현
-
-- 수입/지출 항목 등록
-- 회비 관리
-- 대관료 관리
-- 벌금 관리
-- 회원별 미납 현황 표시
-- 월별 정산 요약 표시
-
-### Phase 11. 사용자용 화면 및 초대코드 입장 흐름
-
-- 초대코드 입력 화면 구성
-- 초대코드 검증 API 연결
-- 사용자용 세션 정보 화면 구성
-- 사용자용 참가 신청 흐름 검토
-- 모바일 사용성 개선
-
-## 배포 계획
-
-현재는 로컬 H2 DB 기반 개발 단계입니다. 추후 AWS Lightsail 등 운영 환경 배포를 고려합니다.
-
-운영 배포 전 검토할 항목은 아래와 같습니다.
-
-- 운영 DB 전환
-  - PostgreSQL 또는 MySQL 검토
-- 환경변수 분리
-- 운영/로컬 profile 분리 강화
-- 인증/권한 구조 설계
-- 관리자 로그인 적용 여부 결정
-- 사용자 초대코드 접근 보안 검토
-- 데이터 백업 정책 수립
-- 배포 자동화 검토
+---
+[개발자 프로필](https://github.com/Leeeyounghwan) · [프로젝트 소스](https://github.com/Leeeyounghwan/PlayCock)
